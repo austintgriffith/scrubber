@@ -33,6 +33,27 @@ uv run scrub-chat     # open http://127.0.0.1:8788
 
 Chat with a `claude -p` agent. Each message is scrubbed on this machine first. Under each message you see exactly what Claude got. The agent runs in an empty folder (`~/.scrubber/workdir`) so it can't read your files. Needs `claude` logged in.
 
+## Local API (use it from any program)
+
+While `scrub-chat` runs:
+
+```bash
+curl -s 127.0.0.1:8788/api/scrub   -d '{"text":"email bob@acme.com about Falcon", "session":"x"}'
+# {"text": "email [EMAIL_1] about [PROJECT_1]", "session": "x"}
+curl -s 127.0.0.1:8788/api/restore -d '{"text":"Sent to [EMAIL_1].", "session":"x"}'
+```
+
+Options on `/api/scrub`: `scrubber` (profile), `normalize` (default false), `keep_email_domain`.
+
+## Example: junk mail finder
+
+`examples/junk_mail.py` reads your Gmail inbox through the clawd-browser bridge, scrubs it, asks Claude which emails are junk, and prints the list. Read only. Sender domains are kept since they matter most for spotting junk.
+
+```bash
+CLAWD_BROWSER_URL=http://<host>:8765/k/<token> uv run python examples/junk_mail.py --tab <id>
+# add --real to see real names in the output
+```
+
 ## Style normalizing
 
 Even with names gone, your writing style can identify you (slang, emoji, typos, sign-offs). This matters when prompts go through a mixer like zkllmapi: anonymous payment doesn't help if your prompts read like you.

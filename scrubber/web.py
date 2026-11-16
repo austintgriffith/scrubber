@@ -6,6 +6,7 @@ Only listens on 127.0.0.1.
 
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -79,6 +80,34 @@ def handle_chat(body: dict) -> dict:
     return {"chat": cid, "sent": clean, "raw": raw, "reply": restore(raw, chat["vault"])}
 
 
+def _session_vault(name: str | None) -> Vault:
+    if name and not re.fullmatch(r"[\w\-]{1,64}", name):
+        raise ValueError("session must be letters, digits, - or _")
+    return Vault.open(HOME / "sessions" / f"api-{name}.json" if name else None)
+
+
+def handle_scrub(body: dict) -> dict:
+    """POST /api/scrub {text, session?, scrubber?, normalize?, keep_email_domain?}
+    -> {text, session}. Pass the same session to /api/restore."""
+    policy = Policy.load(POLICY_PATH)
+    if body.get("scrubber"):
+        policy.scrubber = policy.profiles[body["scrubber"]]
+    if "keep_email_domain" in body:
+        policy.keep_email_domain = bool(body["keep_email_domain"])
+    session = body.get("session") or uuid.uuid4().hex[:12]
+    vault = _session_vault(session)
+    clean = scrub(body["text"], policy, vault)
+    if body.get("normalize", False):
+        clean = normalize(clean, policy.backend())
+    vault.save()
+    return {"text": clean, "session": session}
+
+
+def handle_restore(body: dict) -> dict:
+    """POST /api/restore {text, session} -> {text}"""
+    return {"text": restore(body["text"], _session_vault(body["session"]))}
+
+
 class Handler(BaseHTTPRequestHandler):
     def _send(self, code: int, body: bytes, ctype: str) -> None:
         self.send_response(code)
@@ -99,7 +128,7 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, page, "text/html; charset=utf-8")
 
     def do_POST(self):
-        if self.path != "/chat":
+        if self.path not in ("/chat", "/api/scrub", "/api/restore"):
             return self._send(404, b"", "text/plain")
         # Block cross-site requests from other pages in your browser.
         origin = self.headers.get("Origin", "")
@@ -107,7 +136,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(403, b"bad origin", "text/plain")
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
         try:
-            out = handle_chat(body)
+            out = {"/chat": handle_chat, "/api/scrub": handle_scrub,
+                   "/api/restore": handle_restore}[self.path](body)
             self._send(200, json.dumps(out).encode(), "application/json")
         except Exception as e:  # show the error in the page
             self._send(500, json.dumps({"error": str(e)}).encode(), "application/json")

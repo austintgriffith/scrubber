@@ -32,6 +32,7 @@ Never return:
 - body parts, symptoms, illnesses, medications, or medical conditions (keep "rash", "diabetes", "elephantiasis")
 - topics, feelings, events, roles, or job titles ("the CEO", "my lawyer", "my wife")
 - well-known technologies, programming languages, public protocols, or software (Python, Ethereum, React)
+- well-known public companies, brands, and services (Amazon, LinkedIn, Coinbase, United Airlines)
 - anything already redacted like [PERSON_1] or [EMAIL_2]
 - anything in the KEEP list
 

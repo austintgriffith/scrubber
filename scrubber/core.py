@@ -8,7 +8,7 @@ from pathlib import Path
 
 from . import local_llm, patterns
 
-PLACEHOLDER = re.compile(r"\[?\b([A-Z][A-Z_]*_\d+)\b\]?")
+PLACEHOLDER = re.compile(r"\[?\b([A-Z][A-Z_]*_\d+)\b\]?(@[\w.\-]+\.[A-Za-z]{2,})?")
 
 
 @dataclass
@@ -20,6 +20,7 @@ class Policy:
     profiles: dict = field(default_factory=dict)  # named scrubber configs, pick with --scrubber
     frontier_model: str = "claude-opus-5-5"
     passes: int = 2  # extra local-model passes over already-scrubbed text
+    keep_email_domain: bool = False  # bob@acme.com -> [EMAIL_1]@acme.com (domain shows; leaks the org)
     normalize: bool = True  # rewrite in a neutral voice so style can't identify the author
 
     @classmethod
@@ -106,7 +107,10 @@ def _apply(text: str, hits: list[tuple[str, str]], policy: Policy, vault: Vault)
         if kind in policy.skip_types or policy.is_kept(value):
             continue
         ph = vault.placeholder_for(kind, value)
-        new = _replace(text, value, ph)
+        if kind == "EMAIL" and policy.keep_email_domain and "@" in value:
+            new = _pattern(value).sub(f"[{ph}]@{value.split('@', 1)[1]}", text)
+        else:
+            new = _replace(text, value, ph)
         if new != text:
             count += 1
             text = new
@@ -147,5 +151,9 @@ def scrub(text: str, policy: Policy, vault: Vault, use_llm: bool = True) -> str:
 
 def restore(text: str, vault: Vault) -> str:
     def sub(m: re.Match) -> str:
-        return vault.entries.get(m.group(1), m.group(0))
+        orig = vault.entries.get(m.group(1))
+        if orig is None:
+            return m.group(0)
+        domain = m.group(2) or ""
+        return orig if orig.lower().endswith(domain.lower()) else orig + domain
     return PLACEHOLDER.sub(sub, text)

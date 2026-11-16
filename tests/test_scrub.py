@@ -88,3 +88,12 @@ class DetectorFilterTests(unittest.TestCase):
         with mock.patch.object(local_llm, "chat", return_value=j.dumps({"entities": ents})):
             got = local_llm.find("Email: my wife maria, born 3/4/81", local_llm.Backend(), [])
         self.assertEqual(got, [("PERSON", "maria"), ("OTHER_PII", "3/4/81")])
+
+
+class EmailDomainTests(unittest.TestCase):
+    def test_keep_domain_round_trip(self):
+        v = Vault()
+        out = scrub("from bob.smith@acme.com re: invoice", Policy(keep_email_domain=True), v, use_llm=False)
+        self.assertEqual(out, "from [EMAIL_1]@acme.com re: invoice")
+        self.assertEqual(restore(out, v), "from bob.smith@acme.com re: invoice")
+        self.assertEqual(restore("ask [EMAIL_1]", v), "ask bob.smith@acme.com")
