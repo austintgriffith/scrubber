@@ -14,5 +14,6 @@
   "skip_types": [],
   "local_model": "qwen3:14b",
   "frontier_model": "claude-opus-5-5",
-  "passes": 2
+  "passes": 2,
+  "normalize": true
 }

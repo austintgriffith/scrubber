@@ -25,6 +25,7 @@ def main() -> None:
     ap.add_argument("--model", help="local Ollama model (overrides policy)")
     ap.add_argument("--frontier", help="Claude model (overrides policy)")
     ap.add_argument("--no-llm", action="store_true", help="regex + lists only, skip the local model")
+    ap.add_argument("--raw-style", action="store_true", help="skip style normalizing (keep your wording)")
     ap.add_argument("--show", action="store_true", help="ask: also print what was sent to Claude")
     a = ap.parse_args()
 
@@ -42,6 +43,9 @@ def main() -> None:
 
     clean = scrub(text, policy, vault, use_llm=not a.no_llm)
     vault.save()
+    if policy.normalize and not a.raw_style:
+        from .normalize import light_clean, normalize
+        clean = light_clean(clean) if a.no_llm else normalize(clean, policy.local_model)
 
     if a.cmd == "scrub":
         print(clean)

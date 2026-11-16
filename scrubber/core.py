@@ -19,6 +19,7 @@ class Policy:
     local_model: str = "qwen3:14b"
     frontier_model: str = "claude-opus-5-5"
     passes: int = 2  # extra local-model passes over already-scrubbed text
+    normalize: bool = True  # rewrite in a neutral voice so style can't identify the author
 
     @classmethod
     def load(cls, path: str | Path | None) -> "Policy":

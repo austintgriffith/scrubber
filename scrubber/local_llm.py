@@ -109,3 +109,37 @@ def find(text: str, model: str, keep: list[str], timeout: float = 300) -> list[t
                 continue
             found.append((kind if kind in TYPES else "OTHER_PII", val))
     return found
+
+
+REWRITE_SYSTEM = """Rewrite the user's text so it does not reveal who wrote it. Another reader must not be able to match it to the author by writing style.
+
+Rules:
+- Keep the full meaning: every request, question, fact, constraint, number, and detail.
+- Use plain, neutral, standard English. Full sentences, standard capitalization and punctuation.
+- Remove personal tics: slang, catchphrases, emoji, unusual spelling, repeated punctuation, signature greetings or sign-offs, all-caps emphasis.
+- Do not add anything new. Do not answer the text. Do not add a preamble.
+- Copy every token like [PERSON_1] or [CODE_1] exactly, brackets included. Each one must appear in your output.
+- Keep the same language the text is written in.
+
+Output only the rewritten text."""
+
+
+def rewrite(text: str, model: str, timeout: float = 300) -> str:
+    check_local(model)
+    body = {
+        "model": model,
+        "stream": False,
+        "think": False,
+        "options": {"temperature": 0, "num_ctx": 16384},
+        "messages": [
+            {"role": "system", "content": REWRITE_SYSTEM},
+            {"role": "user", "content": text},
+        ],
+    }
+    req = urllib.request.Request(
+        OLLAMA_URL + "/api/chat",
+        data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read())["message"]["content"].strip()

@@ -52,3 +52,23 @@ class ScrubTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NormalizeTests(unittest.TestCase):
+    def test_light_clean_keeps_code(self):
+        from scrubber.normalize import light_clean
+        out = light_clean("yo!!! i broke it on tuesday 😂\n```\nx = a!!b  # i\n```")
+        self.assertEqual(out, "Yo! I broke it on Tuesday\n```\nx = a!!b  # i\n```")
+
+    def test_rewrite_that_drops_placeholder_is_rejected(self):
+        from scrubber import normalize as n
+        with mock.patch.object(local_llm, "rewrite", return_value="hello there"):
+            out = n.normalize("hey [PERSON_1] `x!!`", "qwen3:14b")
+        self.assertIn("[PERSON_1]", out)
+        self.assertIn("`x!!`", out)
+
+    def test_rewrite_accepted(self):
+        from scrubber import normalize as n
+        with mock.patch.object(local_llm, "rewrite", return_value="Please ask [PERSON_1] about [CODE_1]."):
+            out = n.normalize("yo ask [PERSON_1] bout `deploy.ts` lol", "qwen3:14b")
+        self.assertEqual(out, "Please ask [PERSON_1] about `deploy.ts`.")
