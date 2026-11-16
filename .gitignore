@@ -2,3 +2,10 @@
 __pycache__/
 *.pyc
 uv.lock
+
+# never commit secrets or scrub mappings
+.env
+*.env
+.env.*
+sessions/
+*vault*.json
