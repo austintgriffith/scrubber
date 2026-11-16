@@ -26,12 +26,32 @@ POLICY_PATH = os.environ.get("SCRUB_POLICY", str(Path(__file__).resolve().parent
 chats: dict[str, dict] = {}  # chat id -> {"vault": Vault, "claude_session": str | None}
 
 
+def load_env() -> None:
+    """Read ~/.scrubber/.env (KEY=VALUE lines). Keep tokens there, never in the repo."""
+    f = HOME / ".env"
+    if f.exists():
+        for line in f.read_text().splitlines():
+            if "=" in line and not line.lstrip().startswith("#"):
+                k, v = line.split("=", 1)
+                os.environ.setdefault(k.strip(), v.strip())
+
+
+def claude_env() -> dict:
+    env = dict(os.environ)
+    if env.get("CLAUDE_CODE_OAUTH_TOKEN"):
+        # Use the subscription token; these would override it.
+        for k in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"):
+            env.pop(k, None)
+    return env
+
+
 def run_claude(prompt: str, session: str | None) -> tuple[str, str]:
     WORKDIR.mkdir(parents=True, exist_ok=True)
     cmd = CLAUDE + ["-p", "--output-format", "json", "--append-system-prompt", SYSTEM]
     if session:
         cmd += ["--resume", session]
-    r = subprocess.run(cmd, input=prompt, capture_output=True, text=True, cwd=WORKDIR, timeout=900)
+    r = subprocess.run(cmd, input=prompt, capture_output=True, text=True, cwd=WORKDIR, timeout=900,
+                       env=claude_env())
     try:
         data = json.loads(r.stdout)
     except json.JSONDecodeError:
@@ -97,6 +117,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
+    load_env()
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print(f"scrub chat on http://127.0.0.1:{PORT}", file=sys.stderr)
     srv.serve_forever()
