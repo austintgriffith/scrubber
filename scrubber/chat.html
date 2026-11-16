@@ -96,10 +96,16 @@
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || r.statusText);
       chat = d.chat;
-      saw.textContent = ''; line(saw, 'Claude saw:', d.sent);
+      saw.textContent = '';
+      if (d.outcome === 'blocked') line(saw, 'Not sent.', 'Sage still found private info after scrubbing, so a model on this machine answered instead.');
+      else {
+        line(saw, 'Claude saw:', d.sent);
+        if (d.outcome === 'cut') { saw.append(document.createElement('br')); line(saw, 'Cut:', d.cut.length + ' sentence(s) Sage flagged were removed.'); }
+      }
       bubble.className = 'bubble'; bubble.textContent = d.reply;
       const tog = document.createElement('button'); tog.className = 'toggle'; tog.type = 'button';
       tog.textContent = 'show what Claude wrote';
+      if (d.outcome === 'blocked') tog.hidden = true;
       tog.onclick = () => { bot.classList.toggle('open');
         tog.textContent = bot.classList.contains('open') ? 'hide' : 'show what Claude wrote'; };
       bot.appendChild(tog);

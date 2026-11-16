@@ -10,7 +10,7 @@ import json
 import sys
 from pathlib import Path
 
-from .core import Policy, Vault, restore, scrub
+from .core import Policy, Vault, private_answer, restore, scrub_checked
 
 HOME = Path.home() / ".scrubber"
 
@@ -25,6 +25,7 @@ def main() -> None:
     ap.add_argument("--scrubber", help="scrubber profile name from policy.json, e.g. computer, phone, sage")
     ap.add_argument("--frontier", help="Claude model (overrides policy)")
     ap.add_argument("--no-llm", action="store_true", help="regex + lists only, skip the local model")
+    ap.add_argument("--no-check", action="store_true", help="skip the Sage exit check")
     ap.add_argument("--raw-style", action="store_true", help="skip style normalizing (keep your wording)")
     ap.add_argument("--show", action="store_true", help="ask: also print what was sent to Claude")
     a = ap.parse_args()
@@ -41,11 +42,17 @@ def main() -> None:
         print(restore(text, vault))
         return
 
-    clean = scrub(text, policy, vault, use_llm=not a.no_llm)
+    if a.no_check:
+        policy.check = False
+    norm = policy.normalize and not a.raw_style and not a.no_llm
+    res = scrub_checked(text, policy, vault, use_llm=not a.no_llm, normalize=norm)
     vault.save()
-    if policy.normalize and not a.raw_style:
-        from .normalize import light_clean, normalize
-        clean = light_clean(clean) if a.no_llm else normalize(clean, policy.backend())
+    clean = res.text
+    if policy.normalize and not a.raw_style and a.no_llm:
+        from .normalize import light_clean
+        clean = light_clean(clean)
+    print(f"[check: {res.outcome}" + (f", cut {len(res.cut)} sentence(s)" if res.cut else "")
+          + (f", flags {res.flags}" if res.outcome != "sent" and res.flags else "") + "]", file=sys.stderr)
 
     if a.cmd == "scrub":
         print(clean)
@@ -53,6 +60,10 @@ def main() -> None:
         print(json.dumps(vault.entries, indent=2), file=sys.stderr)
         return
 
+    if res.blocked:
+        print("[blocked: answered by the local model, nothing sent]", file=sys.stderr)
+        print(private_answer(text, policy))
+        return
     from .frontier import ask
     if a.show:
         print("--- sent to Claude ---\n" + clean + "\n----------------------", file=sys.stderr)

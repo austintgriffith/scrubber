@@ -38,7 +38,7 @@ def _luhn_ok(s: str) -> bool:
     return total % 10 == 0
 
 
-def find(text: str) -> list[tuple[str, str]]:
+def find(text: str, medical: bool = False) -> list[tuple[str, str]]:
     """Return (type, value) pairs found in text."""
     found: list[tuple[str, str]] = []
     taken: list[tuple[int, int]] = []
@@ -52,7 +52,7 @@ def find(text: str) -> list[tuple[str, str]]:
             taken.append((a, b))
             found.append(("SECRET", m.group(1)))
 
-    for kind, pat in PATTERNS:
+    for kind, pat in PATTERNS + (MEDICAL if medical else []):
         for m in pat.finditer(text):
             a, b = m.span()
             if not free(a, b):
@@ -62,3 +62,38 @@ def find(text: str) -> list[tuple[str, str]]:
             taken.append((a, b))
             found.append((kind, m.group()))
     return found
+
+
+# ---- medical mode: ported from pii-sanitizer (research/pii-sanitizer/pipeline.py) ----
+# HIPAA Safe Harbor also counts dates tied to a person and ages over 89.
+_ONES = "first second third fourth fifth sixth seventh eighth ninth".split()
+DAY_WORDS = "(?i:" + "|".join(sorted(
+    _ONES + "tenth eleventh twelfth thirteenth fourteenth fifteenth sixteenth seventeenth eighteenth "
+    "nineteenth twentieth thirtieth".split() + [f"{t}[- ]?{o}" for t in ("twenty", "thirty") for o in _ONES],
+    key=len, reverse=True)) + r")\b"
+
+MEDICAL: list[tuple[str, re.Pattern]] = [(k, re.compile(p)) for k, p in [
+    ("URL", r"https?://\S+"),
+    ("DATE", r"\b\d{1,2}/\d{1,2}/\d{2,4}\b"),
+    ("DATE", r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.? \d{1,2}(?:st|nd|rd|th)?(?:,? \d{4})?\b"),
+    ("DATE", r"\b(?:\d{1,2}(?:st|nd|rd|th)?|" + DAY_WORDS + r") of (?i:(?:last |next |this )?(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*)\b(?:,? \d{4})?"),
+    # 12.04.1948, 3-4-22, OCR'd 12.o4.1948 (three parts, so 120/80 is safe)
+    ("DATE", r"\b[\dOo]{1,2}[./-][\dOo]{1,2}[./-](?:19|20)?\d\d\b"),
+    # A month or holiday alone. "May" only next to a number. \b so "Marchetti" keeps "March".
+    ("DATE", r"\b(?i:January|February|March|April|June|July|August|September|Sept?|October|November|December"
+             r"|Christmas|Xmas|Thanksgiving|Halloween|Easter|Hanukkah|Passover|Ramadan|Labor Day|Memorial Day"
+             r"|New Year'?s(?: Eve| Day)?|Fourth of July|Valentine'?s Day"
+             r"|(?:Jan|Feb|Mar|Apr|Jun|Jul|Aug|Oct|Nov|Dec)\.?(?=[ ']\d))\b"
+             r"(?:,?\s+(?:the\s+)?(?:\d{1,2}(?:st|nd|rd|th)?\b|" + DAY_WORDS + r"))?(?:,?\s+'?(?:\d{4}|\d{2})\b)?"),
+    ("DATE", r"\bMay,? (?:\d{1,2}(?:st|nd|rd|th)?\b|(?:19|20)\d\d\b)"),
+    ("DATE", r"\b(?:born|b\.|DOB:?)\s*(?:in\s+)?(?:18\d\d|19[0-3]\d)\b"),  # birth year = age 90+
+    # IDs before ZIP: ZIP used to eat "12345" out of "12345-JS" and leave "-JS".
+    ("ID_NUMBER", r"\b(?=[A-Z0-9-]*\d)(?=[A-Z0-9-]*[A-Z])[A-Z0-9-]{6,}\b"),
+    ("ZIP", r"(?<![\w-])\d{5}(?:-\d{4})?(?![\w-])"),
+    ("ID_NUMBER", r"\b\d{3,}-[A-Za-z]+-\d{3,}\b"),
+    ("ID_NUMBER", r"\b\d{2}-\d{4}-\d{3}-[A-Z0-9]\b"),
+    ("AGE", r"\b(?:9\d|1[01]\d)[- ]?(?:year[- ]old|yo\b|y/o|yrs?\b|years\b)"),
+    ("AGE", r"(?:(?<=\bage )|(?<=\bage: )|(?<=\baged )|(?<=\bturns )|(?<=\bturning ))(?:9\d|1[01]\d)\b"),
+    ("AGE", r"(?:(?<=\bhe's )|(?<=\bshe's )|(?<=\bI'm )|(?<=\bturned )|(?<=\bso ))(?:9\d|1[01]\d)\b(?![./]\d| ?(?:%|mg|kg|lb|mm|bpm))"),
+    ("AGE", r"\b(?:ninety|one hundred|a hundred)(?:[- ]\w+)?(?=[- ](?:years?|yo|next|this)\b)"),
+]]

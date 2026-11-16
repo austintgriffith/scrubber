@@ -14,9 +14,8 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from .core import Policy, Vault, restore, scrub
+from .core import Policy, Vault, private_answer, restore, scrub_checked
 from .frontier import SYSTEM
-from .normalize import normalize
 
 HOME = Path.home() / ".scrubber"
 WORKDIR = HOME / "workdir"  # empty dir so the agent can't read your files
@@ -71,13 +70,14 @@ def handle_chat(body: dict) -> dict:
     chat = chats.setdefault(cid, {
         "vault": Vault.open(HOME / "sessions" / f"web-{cid}.json"), "claude_session": None})
 
-    clean = scrub(body["text"], policy, chat["vault"])
-    if policy.normalize:
-        clean = normalize(clean, policy.backend())
+    res = scrub_checked(body["text"], policy, chat["vault"], normalize=policy.normalize)
     chat["vault"].save()
+    info = {"chat": cid, "outcome": res.outcome, "flags": res.flags, "cut": res.cut}
+    if res.blocked:
+        return info | {"sent": None, "raw": "", "reply": private_answer(body["text"], policy)}
 
-    raw, chat["claude_session"] = run_claude(clean, chat["claude_session"])
-    return {"chat": cid, "sent": clean, "raw": raw, "reply": restore(raw, chat["vault"])}
+    raw, chat["claude_session"] = run_claude(res.text, chat["claude_session"])
+    return info | {"sent": res.text, "raw": raw, "reply": restore(raw, chat["vault"])}
 
 
 def _session_vault(name: str | None) -> Vault:
@@ -87,8 +87,8 @@ def _session_vault(name: str | None) -> Vault:
 
 
 def handle_scrub(body: dict) -> dict:
-    """POST /api/scrub {text, session?, scrubber?, normalize?, keep_email_domain?}
-    -> {text, session}. Pass the same session to /api/restore."""
+    """POST /api/scrub {text, session?, scrubber?, normalize?, keep_email_domain?, check?}
+    -> {text, session, outcome, flags, cut}. Pass the same session to /api/restore."""
     policy = Policy.load(POLICY_PATH)
     if body.get("scrubber"):
         policy.scrubber = policy.profiles[body["scrubber"]]
@@ -96,11 +96,12 @@ def handle_scrub(body: dict) -> dict:
         policy.keep_email_domain = bool(body["keep_email_domain"])
     session = body.get("session") or uuid.uuid4().hex[:12]
     vault = _session_vault(session)
-    clean = scrub(body["text"], policy, vault)
-    if body.get("normalize", False):
-        clean = normalize(clean, policy.backend())
+    if "check" in body:
+        policy.check = bool(body["check"])
+    res = scrub_checked(body["text"], policy, vault, normalize=bool(body.get("normalize", False)))
     vault.save()
-    return {"text": clean, "session": session}
+    # outcome: sent | cut (some sentences removed) | blocked (text is "", send nothing) | unchecked
+    return {"text": res.text, "session": session, "outcome": res.outcome, "flags": res.flags, "cut": res.cut}
 
 
 def handle_restore(body: dict) -> dict:

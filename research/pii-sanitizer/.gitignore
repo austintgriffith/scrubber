@@ -1,0 +1,7 @@
+__pycache__/
+.env
+HANDOFF-*.md
+data/asq-phi/
+data/gretel/
+data/redteam/notes.jsonl
+results/

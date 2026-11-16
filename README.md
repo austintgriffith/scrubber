@@ -7,9 +7,15 @@ your prompt ─► regex (emails, phones, keys, cards, ETH addresses)
             ─► local Ollama model (people, orgs, places, project names)
             ─► keep-list check (names you want Claude to see)
             ─► style normalize (local model rewrites in a neutral voice)
+            ─► Sage exit check (one question per identifier type)
+                 flagged? local model retries, told what Sage saw
+                 still flagged? flagged sentences are cut
+                 still flagged? blocked: a local model answers, nothing is sent
             ─► Claude (sees [PERSON_1], [ORG_1], ...)
             ─► restore placeholders ─► reply
 ```
+
+Sage is Levanto's yes/no model, running in a TEE on NEAR AI. It only sees text that already passed the scrubber. If Sage can't be reached, the message is blocked (fails closed). Key: `SAGE_API_KEY` or `~/sage/.env`. Turn off with `--no-check` or `"check": false`.
 
 The mapping stays local (`~/.scrubber/sessions/<name>.json`, mode 600).
 
@@ -70,6 +76,9 @@ Turn off per call with `--raw-style`, or set `"normalize": false` in the policy.
 - `scrubber`: which profile does the scrubbing. Pick per call with `--scrubber phone`.
 - `profiles`: scrubber models. `kind` is `ollama`, `openai` (any OpenAI-style server: phone app, LM Studio, Sage) or `anthropic`. Anything not on this machine needs `"remote": true`, because it sees raw text.
 - `normalize`: rewrite prompts in a neutral voice (default true).
+- `mode`: `general` (default) or `medical`. Medical also strips dates, ages over 89 and ZIP codes, uses pii-sanitizer's tested prompt, and has Sage check all 7 identifier types.
+- `check`, `check_retries`, `check_tags`: the Sage exit check.
+- `private`: profile that answers blocked messages on this machine.
 - `passes`: how many times the local model re-checks the scrubbed text.
 
 ## Library
@@ -80,6 +89,15 @@ policy, vault = Policy.load("policy.json"), Vault()
 clean = scrub(text, policy, vault)
 ...send clean anywhere...
 original = restore(reply, vault)
+```
+
+## Bench
+
+Test sets and research came from [pii-sanitizer](https://github.com/clawdbotatg/pii-sanitizer) (`research/pii-sanitizer/`). Run the full pipeline on them:
+
+```bash
+uv run python bench/run.py raw --model qwen3:8b       # 50 fake medical notes
+uv run python bench/run.py redteam3 --model qwen3:8b  # attack chats written to beat the scrubber
 ```
 
 ## Tests

@@ -97,3 +97,42 @@ class EmailDomainTests(unittest.TestCase):
         self.assertEqual(out, "from [EMAIL_1]@acme.com re: invoice")
         self.assertEqual(restore(out, v), "from bob.smith@acme.com re: invoice")
         self.assertEqual(restore("ask [EMAIL_1]", v), "ask bob.smith@acme.com")
+
+
+class CheckTests(unittest.TestCase):
+    """Sage check flow with Sage and the local model mocked."""
+
+    def run_checked(self, text, sage_answers, llm_answers=()):
+        from scrubber import core, sage
+        answers = iter(sage_answers)
+        llm = iter(llm_answers)
+        with mock.patch.object(sage, "flagged", side_effect=lambda t, tags: next(answers)(t)), \
+             mock.patch.object(local_llm, "find", side_effect=lambda *a, **k: next(llm, [])):
+            return core.scrub_checked(text, Policy(), Vault())
+
+    def test_clean_is_sent(self):
+        r = self.run_checked("hello there", [lambda t: []])
+        self.assertEqual((r.outcome, r.text), ("sent", "hello there"))
+
+    def test_retry_fixes_it(self):
+        # pass 1 misses Tom; Sage flags name; retry finds Tom; Sage clean
+        r = self.run_checked("ask Tom about it", [lambda t: ["name"], lambda t: []],
+                             [[], [("PERSON", "Tom")]])
+        self.assertEqual((r.outcome, r.text), ("sent", "ask [PERSON_1] about it"))
+
+    def test_cut_flagged_sentence(self):
+        flag_tom = lambda t: ["name"] if "Tom" in t else []
+        r = self.run_checked("I feel sick. Tom knows.", [flag_tom] * 10)
+        self.assertEqual((r.outcome, r.text, r.cut), ("cut", "I feel sick.", ["Tom knows."]))
+
+    def test_blocked_when_everything_flagged(self):
+        r = self.run_checked("Tom Tom Tom", [lambda t: ["name"]] * 10)
+        self.assertEqual((r.outcome, r.text), ("blocked", ""))
+
+    def test_sage_down_fails_closed(self):
+        r = self.run_checked("hello", [lambda t: ["sage-error: 504"]] * 10)
+        self.assertTrue(r.blocked)
+
+    def test_typed_placeholders_neutralized(self):
+        out = scrub("[PERSON_1] = Jane Roe", Policy(), Vault(), use_llm=False)
+        self.assertEqual(out, "(PERSON 1) = Jane Roe")

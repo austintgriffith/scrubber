@@ -16,7 +16,7 @@ import sys
 import urllib.request
 from pathlib import Path
 
-from scrubber.core import Policy, Vault, restore, scrub
+from scrubber.core import Policy, Vault, restore, scrub_checked
 from scrubber.web import POLICY_PATH, load_env, run_claude
 
 ROWS_JS = (Path(__file__).parent / "gmail_rows.js").read_text()
@@ -63,7 +63,12 @@ def main() -> None:
     policy = Policy.load(POLICY_PATH)
     policy.keep_email_domain = True
     vault = Vault()
-    clean = scrub("\n".join(lines), policy, vault)
+    res = scrub_checked("\n".join(lines), policy, vault, cut_lines=True)
+    if res.blocked:
+        sys.exit(f"Sage still flags the scrubbed inbox ({res.flags[-1]}); nothing sent.")
+    if res.cut:
+        print(f"Sage flagged {len(res.cut)} row(s); they were left out.", file=sys.stderr)
+    clean = res.text
     clean_lines = {int(m.group(1)): line for line in clean.splitlines() if (m := re.match(r"#(\d+) \|", line))}
 
     print("Asking Claude...", file=sys.stderr)
