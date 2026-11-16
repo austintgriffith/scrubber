@@ -25,6 +25,10 @@ def main() -> None:
     ap.add_argument("--scrubber", help="scrubber profile name from policy.json, e.g. computer, phone, sage")
     ap.add_argument("--frontier", help="Claude model (overrides policy)")
     ap.add_argument("--no-llm", action="store_true", help="regex + lists only, skip the local model")
+    ap.add_argument("--show-map", action="store_true", help="scrub: print placeholder -> real value (humans only)")
+    ap.add_argument("--json", action="store_true", help="scrub: print {text, outcome, cut} as JSON")
+    ap.add_argument("--cut-lines", action="store_true", help="check cuts flagged lines, not sentences (lists, inboxes)")
+    ap.add_argument("--keep-email-domain", action="store_true", help="bob@acme.com -> [EMAIL_1]@acme.com")
     ap.add_argument("--no-check", action="store_true", help="skip the Sage exit check")
     ap.add_argument("--raw-style", action="store_true", help="skip style normalizing (keep your wording)")
     ap.add_argument("--show", action="store_true", help="ask: also print what was sent to Claude")
@@ -44,8 +48,10 @@ def main() -> None:
 
     if a.no_check:
         policy.check = False
+    if a.keep_email_domain:
+        policy.keep_email_domain = True
     norm = policy.normalize and not a.raw_style and not a.no_llm
-    res = scrub_checked(text, policy, vault, use_llm=not a.no_llm, normalize=norm)
+    res = scrub_checked(text, policy, vault, use_llm=not a.no_llm, normalize=norm, cut_lines=a.cut_lines)
     vault.save()
     clean = res.text
     if policy.normalize and not a.raw_style and a.no_llm:
@@ -54,10 +60,15 @@ def main() -> None:
     print(f"[check: {res.outcome}" + (f", cut {len(res.cut)} sentence(s)" if res.cut else "")
           + (f", flags {res.flags}" if res.outcome != "sent" and res.flags else "") + "]", file=sys.stderr)
 
+    if a.cmd == "scrub" and a.json:
+        print(json.dumps({"text": clean, "outcome": res.outcome, "cut": len(res.cut),
+                          "session": a.session}))
+        return
     if a.cmd == "scrub":
         print(clean)
-        print("\n--- mapping (local only) ---", file=sys.stderr)
-        print(json.dumps(vault.entries, indent=2), file=sys.stderr)
+        if a.show_map:  # real values: only for a human at the terminal, never for an agent
+            print("\n--- mapping (local only) ---", file=sys.stderr)
+            print(json.dumps(vault.entries, indent=2), file=sys.stderr)
         return
 
     if res.blocked:

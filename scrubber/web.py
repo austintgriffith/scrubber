@@ -87,7 +87,7 @@ def _session_vault(name: str | None) -> Vault:
 
 
 def handle_scrub(body: dict) -> dict:
-    """POST /api/scrub {text, session?, scrubber?, normalize?, keep_email_domain?, check?}
+    """POST /api/scrub {text, session?, scrubber?, normalize?, keep_email_domain?, check?, cut_lines?}
     -> {text, session, outcome, flags, cut}. Pass the same session to /api/restore."""
     policy = Policy.load(POLICY_PATH)
     if body.get("scrubber"):
@@ -98,7 +98,8 @@ def handle_scrub(body: dict) -> dict:
     vault = _session_vault(session)
     if "check" in body:
         policy.check = bool(body["check"])
-    res = scrub_checked(body["text"], policy, vault, normalize=bool(body.get("normalize", False)))
+    res = scrub_checked(body["text"], policy, vault, normalize=bool(body.get("normalize", False)),
+                        cut_lines=bool(body.get("cut_lines", False)))
     vault.save()
     # outcome: sent | cut (some sentences removed) | blocked (text is "", send nothing) | unchecked
     return {"text": res.text, "session": session, "outcome": res.outcome, "flags": res.flags, "cut": res.cut}

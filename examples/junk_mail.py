@@ -48,6 +48,7 @@ def main() -> None:
     ap.add_argument("--tab", type=int, help="Gmail tab id (default: active tab)")
     ap.add_argument("--real", action="store_true", help="show real senders/subjects in the output")
     ap.add_argument("--limit", type=int, default=100)
+    ap.add_argument("--json", action="store_true", help="print [{i, verdict, reason, row}] (scrubbed rows) for another program")
     a = ap.parse_args()
     if not a.bridge:
         sys.exit("set --bridge or CLAWD_BROWSER_URL")
@@ -75,6 +76,10 @@ def main() -> None:
     raw, _ = run_claude(ASK + clean, None)
     verdicts = json.loads(raw[raw.index("["): raw.rindex("]") + 1])
 
+    if a.json:
+        print(json.dumps([{**v, "row": restore(clean_lines.get(v["i"], ""), vault) if a.real
+                           else clean_lines.get(v["i"], "")} for v in verdicts], indent=1))
+        return
     junk = [v for v in verdicts if v.get("verdict") == "junk"]
     print(f"\n{len(junk)} of {len(rows)} look like junk:\n")
     for v in junk:

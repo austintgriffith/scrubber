@@ -134,7 +134,7 @@ def _apply(text: str, hits: list[tuple[str, str]], policy: Policy, vault: Vault)
     count = 0
     # Longest first so "Alice Smith" is replaced before "Alice".
     for kind, value in sorted(set(hits), key=lambda h: -len(h[1])):
-        if kind in policy.skip_types or policy.is_kept(value):
+        if kind in policy.skip_types or policy.is_kept(value) or patterns.PUBLIC_EMAIL.match(value):
             continue
         ph = vault.placeholder_for(kind, value)
         if kind == "EMAIL" and policy.keep_email_domain and "@" in value:
@@ -203,6 +203,17 @@ class Result:
         return self.outcome == "blocked"
 
 
+_KEPT_DOMAIN = re.compile(r"(\[EMAIL_\d+\])@[\w.\-]+\.[A-Za-z]{2,}")
+_EMAILISH = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)*\.[A-Za-z]{2,}")
+
+
+def _check_view(text: str) -> str:
+    """What Sage reads: drop what was left in on purpose (kept email domains, noreply
+    senders), since Sage flags any domain as contact info."""
+    text = _KEPT_DOMAIN.sub(r"\1", text)
+    return _EMAILISH.sub(lambda m: "[EMAIL_0]" if patterns.PUBLIC_EMAIL.match(m.group()) else m.group(), text)
+
+
 def _split(text: str, lines: bool = False) -> list[str]:
     return [p for p in re.split(r"\n+" if lines else r"(?<=[.!?;])\s+|\n+", text) if p.strip()]
 
@@ -226,7 +237,7 @@ def scrub_checked(text: str, policy: Policy, vault: Vault, use_llm: bool = True,
 
     tags, flags = policy.tags(), []
     for attempt in range(policy.check_retries + 1):
-        flags.append(sage.flagged(clean, tags))
+        flags.append(sage.flagged(_check_view(clean), tags))
         if not flags[-1] or attempt == policy.check_retries or not use_llm:
             break
         if any(f.startswith("sage-error") for f in flags[-1]):
@@ -240,11 +251,11 @@ def scrub_checked(text: str, policy: Policy, vault: Vault, use_llm: bool = True,
 
     parts = _split(clean, cut_lines)
     with ThreadPoolExecutor(4) as ex:
-        per = list(ex.map(lambda p: sage.flagged(p, tags), parts))
+        per = list(ex.map(lambda p: sage.flagged(_check_view(p), tags), parts))
     kept = [p for p, f in zip(parts, per) if not f]
     cut = [p for p, f in zip(parts, per) if f]
     clean = "\n".join(kept)
-    flags.append(sage.flagged(clean, tags) if clean.strip() else ["empty"])
+    flags.append(sage.flagged(_check_view(clean), tags) if clean.strip() else ["empty"])
     if flags[-1] or not clean.strip():
         return Result("", "blocked", flags, cut)
     return Result(clean, "cut", flags, cut)
