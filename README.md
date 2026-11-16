@@ -38,7 +38,8 @@ Turn off per call with `--raw-style`, or set `"normalize": false` in the policy.
 - `keep`: names never scrubbed (public projects, public people, your own brand). Parts of a kept phrase are kept too ("Vitalik" from "Vitalik Buterin").
 - `always_scrub`: words always scrubbed, even if the model misses them (codenames, client names).
 - `skip_types`: entity types to leave alone, e.g. `["LOCATION"]`.
-- `local_model`: any local Ollama model. `:cloud` models are refused since they'd send raw text off the machine.
+- `scrubber`: which profile does the scrubbing. Pick per call with `--scrubber phone`.
+- `profiles`: scrubber models. `kind` is `ollama`, `openai` (any OpenAI-style server: phone app, LM Studio, Sage) or `anthropic`. Anything not on this machine needs `"remote": true`, because it sees raw text.
 - `normalize`: rewrite prompts in a neutral voice (default true).
 - `passes`: how many times the local model re-checks the scrubbed text.
 

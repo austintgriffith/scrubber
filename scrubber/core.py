@@ -16,7 +16,8 @@ class Policy:
     keep: list[str] = field(default_factory=list)          # never scrub these
     always_scrub: list[str] = field(default_factory=list)  # always scrub these
     skip_types: list[str] = field(default_factory=list)    # entity types to leave alone
-    local_model: str = "qwen3:14b"
+    scrubber: dict = field(default_factory=dict)  # see local_llm.Backend
+    profiles: dict = field(default_factory=dict)  # named scrubber configs, pick with --scrubber
     frontier_model: str = "claude-opus-5-5"
     passes: int = 2  # extra local-model passes over already-scrubbed text
     normalize: bool = True  # rewrite in a neutral voice so style can't identify the author
@@ -26,7 +27,12 @@ class Policy:
         if not path or not Path(path).exists():
             return cls()
         data = json.loads(Path(path).read_text())
+        if isinstance(data.get("scrubber"), str):  # "scrubber": "computer" -> that profile
+            data["scrubber"] = data["profiles"][data["scrubber"]]
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
+
+    def backend(self) -> local_llm.Backend:
+        return local_llm.Backend(**self.scrubber)
 
     def is_kept(self, value: str) -> bool:
         v = value.strip().lower()
@@ -125,8 +131,9 @@ def scrub(text: str, policy: Policy, vault: Vault, use_llm: bool = True) -> str:
 
     # 3. Local model: names, orgs, places. Re-run on the result to catch misses.
     if use_llm:
+        backend = policy.backend()
         for _ in range(max(1, policy.passes)):
-            found = local_llm.find(text, policy.local_model, policy.keep)
+            found = local_llm.find(text, backend, policy.keep)
             text, changed = _apply(text, found, policy, vault)
             if not changed:
                 break

@@ -12,7 +12,13 @@
   ],
   "always_scrub": [],
   "skip_types": [],
-  "local_model": "qwen3:14b",
+  "scrubber": "computer",
+  "profiles": {
+    "computer": {"kind": "ollama", "model": "qwen3:14b"},
+    "phone": {"kind": "openai", "model": "qwen3-1.7b", "url": "http://PHONE_IP:8080/v1", "remote": true},
+    "sage": {"kind": "openai", "model": "SAGE_MODEL", "url": "https://SAGE_URL/v1", "api_key_env": "SAGE_API_KEY", "remote": true},
+    "claude": {"kind": "anthropic", "model": "claude-opus-5-5", "remote": true}
+  },
   "frontier_model": "claude-opus-5-5",
   "passes": 2,
   "normalize": true

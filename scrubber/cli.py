@@ -22,7 +22,7 @@ def main() -> None:
     ap.add_argument("text", nargs="?")
     ap.add_argument("--policy", default="policy.json", help="JSON policy file (default ./policy.json)")
     ap.add_argument("--session", help="name of a vault to reuse across turns (~/.scrubber/sessions)")
-    ap.add_argument("--model", help="local Ollama model (overrides policy)")
+    ap.add_argument("--scrubber", help="scrubber profile name from policy.json, e.g. computer, phone, sage")
     ap.add_argument("--frontier", help="Claude model (overrides policy)")
     ap.add_argument("--no-llm", action="store_true", help="regex + lists only, skip the local model")
     ap.add_argument("--raw-style", action="store_true", help="skip style normalizing (keep your wording)")
@@ -31,8 +31,8 @@ def main() -> None:
 
     text = a.text if a.text is not None else sys.stdin.read()
     policy = Policy.load(a.policy)
-    if a.model:
-        policy.local_model = a.model
+    if a.scrubber:
+        policy.scrubber = policy.profiles[a.scrubber]
     if a.frontier:
         policy.frontier_model = a.frontier
     vault = Vault.open(HOME / "sessions" / f"{a.session}.json" if a.session else None)
@@ -45,7 +45,7 @@ def main() -> None:
     vault.save()
     if policy.normalize and not a.raw_style:
         from .normalize import light_clean, normalize
-        clean = light_clean(clean) if a.no_llm else normalize(clean, policy.local_model)
+        clean = light_clean(clean) if a.no_llm else normalize(clean, policy.backend())
 
     if a.cmd == "scrub":
         print(clean)

@@ -7,6 +7,7 @@ import json
 import os
 import re
 import urllib.request
+from dataclasses import dataclass
 
 PLACEHOLDER = re.compile(r"\[[A-Z][A-Z_]*_\d+\]")
 
@@ -44,18 +45,86 @@ SCHEMA = {
                     "type": {"type": "string", "enum": TYPES},
                 },
                 "required": ["text", "type"],
+                "additionalProperties": False,
             },
         }
     },
     "required": ["entities"],
+    "additionalProperties": False,
 }
 
 
-def check_local(model: str) -> None:
-    if "cloud" in model.lower():
-        raise ValueError(
-            f"{model!r} is an Ollama cloud model; it would send raw text off this machine. "
-            "Pick a local model.")
+@dataclass
+class Backend:
+    """Which model does the scrubbing. Swap freely.
+
+    kind:   "ollama"    - Ollama on this computer (default)
+            "openai"    - any OpenAI-style server: a phone app, LM Studio, llama.cpp, Sage...
+            "anthropic" - Claude
+    url:    server address (ollama / openai)
+    remote: set true to allow a backend that is not on this machine to see raw text
+    """
+    kind: str = "ollama"
+    model: str = "qwen3:14b"
+    url: str | None = None
+    api_key_env: str | None = None
+    remote: bool = False
+
+    def is_local(self) -> bool:
+        if self.kind == "anthropic" or "cloud" in self.model.lower():
+            return False
+        host = (self.url or "localhost").split("//")[-1].split(":")[0].split("/")[0]
+        return host in ("localhost", "127.0.0.1", "::1")
+
+    def check(self) -> None:
+        if not self.is_local() and not self.remote:
+            raise ValueError(
+                f"scrubber backend {self.kind}/{self.model} is not on this machine and would see "
+                'raw text. Set "remote": true in the scrubber policy if you trust it.')
+
+
+def _post(url: str, body: dict, headers: dict, timeout: float) -> dict:
+    req = urllib.request.Request(url, data=json.dumps(body).encode(),
+                                 headers={"Content-Type": "application/json", **headers})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read())
+
+
+def chat(b: Backend, system: str, user: str, schema: dict | None = None, timeout: float = 300) -> str:
+    """One system+user turn, return the text. With schema, the text is JSON."""
+    b.check()
+    if b.kind == "ollama":
+        body = {"model": b.model, "stream": False, "think": False,
+                "options": {"temperature": 0, "num_ctx": 16384},
+                "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
+        if schema:
+            body["format"] = schema
+        return _post((b.url or OLLAMA_URL) + "/api/chat", body, {}, timeout)["message"]["content"]
+
+    if b.kind == "openai":
+        if not b.url:
+            raise ValueError('openai backend needs "url", e.g. http://192.168.1.20:8080/v1')
+        headers = {}
+        if b.api_key_env and os.environ.get(b.api_key_env):
+            headers["Authorization"] = "Bearer " + os.environ[b.api_key_env]
+        body = {"model": b.model, "temperature": 0,
+                "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
+        if schema:
+            body["response_format"] = {"type": "json_schema",
+                                       "json_schema": {"name": "out", "schema": schema}}
+        r = _post(b.url.rstrip("/") + "/chat/completions", body, headers, timeout)
+        return r["choices"][0]["message"]["content"]
+
+    if b.kind == "anthropic":
+        import anthropic
+        kw = {"output_config": {"effort": "low",
+                                **({"format": {"type": "json_schema", "schema": schema}} if schema else {})}}
+        msg = anthropic.Anthropic().messages.create(
+            model=b.model, max_tokens=16000, system=system,
+            messages=[{"role": "user", "content": user}], **kw)
+        return "".join(x.text for x in msg.content if x.type == "text")
+
+    raise ValueError(f"unknown backend {b.kind!r}")
 
 
 def _chunks(text: str, size: int = 6000) -> list[str]:
@@ -72,30 +141,12 @@ def _chunks(text: str, size: int = 6000) -> list[str]:
     return out
 
 
-def find(text: str, model: str, keep: list[str], timeout: float = 300) -> list[tuple[str, str]]:
+def find(text: str, backend: Backend, keep: list[str], timeout: float = 300) -> list[tuple[str, str]]:
     """Return (type, value) pairs. Values not literally in the text are dropped."""
-    check_local(model)
     found: list[tuple[str, str]] = []
     keep_note = "KEEP list (never return these): " + (", ".join(keep) if keep else "(empty)")
     for chunk in _chunks(text):
-        body = {
-            "model": model,
-            "stream": False,
-            "think": False,
-            "format": SCHEMA,
-            "options": {"temperature": 0, "num_ctx": 16384},
-            "messages": [
-                {"role": "system", "content": SYSTEM + "\n\n" + keep_note},
-                {"role": "user", "content": "TEXT:\n" + chunk},
-            ],
-        }
-        req = urllib.request.Request(
-            OLLAMA_URL + "/api/chat",
-            data=json.dumps(body).encode(),
-            headers={"Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            content = json.loads(r.read())["message"]["content"]
+        content = chat(backend, SYSTEM + "\n\n" + keep_note, "TEXT:\n" + chunk, SCHEMA, timeout)
         try:
             ents = json.loads(content).get("entities", [])
         except json.JSONDecodeError:
@@ -124,22 +175,5 @@ Rules:
 Output only the rewritten text."""
 
 
-def rewrite(text: str, model: str, timeout: float = 300) -> str:
-    check_local(model)
-    body = {
-        "model": model,
-        "stream": False,
-        "think": False,
-        "options": {"temperature": 0, "num_ctx": 16384},
-        "messages": [
-            {"role": "system", "content": REWRITE_SYSTEM},
-            {"role": "user", "content": text},
-        ],
-    }
-    req = urllib.request.Request(
-        OLLAMA_URL + "/api/chat",
-        data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"},
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read())["message"]["content"].strip()
+def rewrite(text: str, backend: Backend, timeout: float = 300) -> str:
+    return chat(backend, REWRITE_SYSTEM, text, None, timeout).strip()

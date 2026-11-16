@@ -41,8 +41,13 @@ class ScrubTests(unittest.TestCase):
         self.assertEqual(out, "Status of [CUSTOM_1]?")
 
     def test_cloud_model_refused(self):
-        with self.assertRaises(ValueError):
-            local_llm.check_local("minimax-m3:cloud")
+        for b in [local_llm.Backend(model="minimax-m3:cloud"),
+                  local_llm.Backend(kind="openai", url="http://192.168.1.5:8080/v1"),
+                  local_llm.Backend(kind="anthropic", model="claude-opus-5-5")]:
+            with self.assertRaises(ValueError):
+                b.check()
+        local_llm.Backend().check()  # local ollama is fine
+        local_llm.Backend(kind="anthropic", model="claude-opus-5-5", remote=True).check()
 
     def test_luhn(self):
         out = scrub("card 4111 1111 1111 1111, order 1234 5678 9012 3456", Policy(), Vault(), use_llm=False)
@@ -63,12 +68,12 @@ class NormalizeTests(unittest.TestCase):
     def test_rewrite_that_drops_placeholder_is_rejected(self):
         from scrubber import normalize as n
         with mock.patch.object(local_llm, "rewrite", return_value="hello there"):
-            out = n.normalize("hey [PERSON_1] `x!!`", "qwen3:14b")
+            out = n.normalize("hey [PERSON_1] `x!!`", local_llm.Backend())
         self.assertIn("[PERSON_1]", out)
         self.assertIn("`x!!`", out)
 
     def test_rewrite_accepted(self):
         from scrubber import normalize as n
         with mock.patch.object(local_llm, "rewrite", return_value="Please ask [PERSON_1] about [CODE_1]."):
-            out = n.normalize("yo ask [PERSON_1] bout `deploy.ts` lol", "qwen3:14b")
+            out = n.normalize("yo ask [PERSON_1] bout `deploy.ts` lol", local_llm.Backend())
         self.assertEqual(out, "Please ask [PERSON_1] about `deploy.ts`.")
