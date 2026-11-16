@@ -1,0 +1,13 @@
+[project]
+name = "scrubber"
+version = "0.1.0"
+description = "Scrub PII locally (regex + Ollama) before sending prompts to Claude, then restore it in the reply."
+requires-python = ">=3.11"
+dependencies = ["anthropic"]
+
+[project.scripts]
+scrub = "scrubber.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
