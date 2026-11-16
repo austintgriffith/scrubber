@@ -15,21 +15,30 @@ OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 
 TYPES = ["PERSON", "ORG", "LOCATION", "PROJECT", "ID_NUMBER", "OTHER_PII"]
 
-SYSTEM = """You find private information in text so it can be redacted before the text is sent to a third party.
+SYSTEM = """You find identifying information in text so it can be redacted before the text is sent to an AI assistant.
 
-Return every span that names or identifies:
-- PERSON: a real person's name, nickname, or username/handle
-- ORG: a private company, team, client, or organization
-- LOCATION: a street address, city, neighborhood, or specific place tied to someone
+The goal: the assistant must not learn WHO the text is about. It still needs WHAT the text is about to be helpful. Only redact things that point to a specific real person, organization, or place. When unsure whether a word is a name, leave it.
+
+Return spans of these types:
+- PERSON: a specific person's name, nickname, or username/handle
+- ORG: the name of a specific company, team, client, or organization
+- LOCATION: a street address, city, neighborhood, or specific place
 - PROJECT: an internal or confidential project, product codename, or deal name
-- ID_NUMBER: account numbers, case numbers, license/passport numbers, employee IDs
-- OTHER_PII: dates of birth, medical details tied to a person, or anything else that identifies someone
+- ID_NUMBER: account numbers, case numbers, license/passport numbers, employee IDs, medical record numbers
+- OTHER_PII: exact dates of birth, or other details that pin down one specific person
 
-Do NOT return:
-- generic words, roles, or job titles ("the CEO", "my lawyer")
-- well-known technologies, programming languages, public protocols, or software (Python, Ethereum, React, Linux)
+Never return:
+- ordinary words, slang, or misspellings, even if lowercase or odd ("nards", "gonna", "lol")
+- body parts, symptoms, illnesses, medications, or medical conditions (keep "rash", "diabetes", "elephantiasis")
+- topics, feelings, events, roles, or job titles ("the CEO", "my lawyer", "my wife")
+- well-known technologies, programming languages, public protocols, or software (Python, Ethereum, React)
 - anything already redacted like [PERSON_1] or [EMAIL_2]
 - anything in the KEEP list
+
+Examples:
+"is this lump on my nards cancer?" -> nothing
+"my wife maria has a rash after taking ibuprofen" -> maria (PERSON)
+"dr patel at mercy hospital said its gout" -> dr patel (PERSON), mercy hospital (ORG)
 
 Copy each span exactly as it appears in the text, character for character. Return each distinct span once."""
 
@@ -158,6 +167,10 @@ def find(text: str, backend: Backend, keep: list[str], timeout: float = 300) -> 
                 continue
             if PLACEHOLDER.search(val):  # already redacted
                 continue
+            if val.lower().split()[0] in ("my", "our", "the", "his", "her", "their", "your", "a", "an"):
+                continue  # "my wife", "the CEO": a role, not a name
+            if kind not in ("PERSON", "ORG", "LOCATION", "PROJECT") and not any(c.isdigit() for c in val):
+                continue  # IDs and dates have digits; this drops junk like "Email"
             found.append((kind if kind in TYPES else "OTHER_PII", val))
     return found
 
@@ -173,6 +186,7 @@ Rules:
 - Do not add anything new. Do not answer the text. Do not add a preamble.
 - Copy every token like [PERSON_1] or [CODE_1] exactly, brackets included. Each one must appear in your output.
 - Keep the same language the text is written in.
+- Keep every word whose meaning matters. If a word is an obvious misspelling, write the correct word (elephantits -> elephantiasis). Keep slang for body parts or things as is. If you don't know a word, copy it unchanged. Never swap a word for a different one.
 
 Examples:
 <text>hey can u write a quick thank you note to [PERSON_1] lol</text>

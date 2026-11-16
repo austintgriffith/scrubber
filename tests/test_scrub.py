@@ -77,3 +77,14 @@ class NormalizeTests(unittest.TestCase):
         with mock.patch.object(local_llm, "rewrite", return_value="Please ask [PERSON_1] about [CODE_1]."):
             out = n.normalize("yo ask [PERSON_1] bout `deploy.ts` lol", local_llm.Backend())
         self.assertEqual(out, "Please ask [PERSON_1] about `deploy.ts`.")
+
+
+class DetectorFilterTests(unittest.TestCase):
+    def test_drops_roles_junk_and_hallucinations(self):
+        import json as j
+        ents = [{"text": "my wife", "type": "PERSON"}, {"text": "Email", "type": "OTHER_PII"},
+                {"text": "maria", "type": "PERSON"}, {"text": "3/4/81", "type": "OTHER_PII"},
+                {"text": "Bob", "type": "PERSON"}]  # Bob is not in the text
+        with mock.patch.object(local_llm, "chat", return_value=j.dumps({"entities": ents})):
+            got = local_llm.find("Email: my wife maria, born 3/4/81", local_llm.Backend(), [])
+        self.assertEqual(got, [("PERSON", "maria"), ("OTHER_PII", "3/4/81")])
