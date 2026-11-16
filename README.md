@@ -25,6 +25,14 @@ uv run scrub scrub --no-llm "..."       # regex + lists only, instant
 
 `ask` needs `ANTHROPIC_API_KEY` (or an `ant auth login` profile). Ollama must be running.
 
+## Chat page
+
+```bash
+uv run scrub-chat     # open http://127.0.0.1:8788
+```
+
+Chat with a `claude -p` agent. Each message is scrubbed on this machine first. Under each message you see exactly what Claude got. The agent runs in an empty folder (`~/.scrubber/workdir`) so it can't read your files. Needs `claude` logged in.
+
 ## Style normalizing
 
 Even with names gone, your writing style can identify you (slang, emoji, typos, sign-offs). This matters when prompts go through a mixer like zkllmapi: anonymous payment doesn't help if your prompts read like you.

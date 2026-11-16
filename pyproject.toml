@@ -7,6 +7,7 @@ dependencies = ["anthropic"]
 
 [project.scripts]
 scrub = "scrubber.cli:main"
+scrub-chat = "scrubber.web:main"
 
 [build-system]
 requires = ["hatchling"]
