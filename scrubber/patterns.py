@@ -1,6 +1,19 @@
-"""Regex detectors for structured PII and secrets. No model needed."""
+"""Regex detectors for structured PII and secrets. No model needed.
 
+The credential pass follows Hugging Face safeagents' `scrub` (Apache 2.0,
+github.com/huggingface/safeagents): atif-scan's credential shapes and secret-named
+values, auth headers, URL passwords, secret query params, this machine's secret env
+vars, home-dir usernames, and only public IPs.
+"""
+
+import ipaddress
+import os
 import re
+
+try:
+    from atif_scan.data import account_ids, credentials as _creds
+except ImportError:  # optional: the regexes below still run
+    _creds = account_ids = None
 
 # Order matters: longer / more specific patterns first.
 PATTERNS: list[tuple[str, re.Pattern]] = [
@@ -24,6 +37,43 @@ ASSIGNMENT = re.compile(
     r"|private[_\-]?key|mnemonic|seed[_\-]?phrase)\b\s*[:=]\s*[\"']?([^\s\"']{4,})")
 
 
+# From safeagents (constants.py). Each captures only the secret part.
+CRED_PATTERNS: list[tuple[str, re.Pattern]] = [
+    ("SECRET", re.compile(r"(?i)\b(?:authorization|proxy-authorization)\s*[:=]\s*(?:(?:basic|token)\s+)?(?!bearer\b)([^\s\"']{8,})")),
+    ("SECRET", re.compile(r"(?i)\bbearer\s+([A-Za-z0-9._~+/=-]{8,})")),
+    ("SECRET", re.compile(r"://[^/\s:@]+:([^/\s@]+)@")),
+    ("SECRET", re.compile(r"(?i)[?&](?:token|key|sig|signature|access_token|api_key)=([^&\s\"']+)")),
+    ("USER", re.compile(r"(?:/Users/|/home/|[A-Za-z]:\\{1,2}Users\\{1,2})([A-Za-z0-9._-]+)")),
+]
+# Home dirs of containers and CI machines, not a person.
+GENERIC_HOME_USERS = {"shared", "ubuntu", "runner", "user", "admin", "linuxbrew", "node", "app", "public", "root"}
+# Not personal: SSH remotes, noreply senders, example domains.
+PUBLIC_EMAIL = re.compile(r"(?i)^(?:git@|no-?reply[^@]*@|.*@(?:example\.(?:com|org|net)|users\.noreply\.github\.com)$)")
+
+
+def env_secrets() -> set[str]:
+    """Values of this machine's secret-named env vars (API keys, tokens), to catch them pasted bare."""
+    if not _creds:
+        return set()
+    return {v for k, v in os.environ.items() if _creds.secret_name(k) and _creds.plausible_value(v)}
+
+
+def credential_values(text: str) -> list[tuple[str, str]]:
+    """Every credential-like value in text: atif-scan + safeagents' extra rules + env secrets."""
+    out: list[tuple[str, str]] = []
+    if _creds:
+        out += [("PRIVATE_KEY", m.group()) for m in _creds.PRIVATE_KEY.finditer(text)]
+        out += [("SECRET", v) for v in _creds.values([text]) | account_ids.values([text])]
+    for kind, pat in CRED_PATTERNS:
+        for m in pat.finditer(text):
+            v = m.group(1)
+            if kind == "USER" and v.lower() in GENERIC_HOME_USERS:
+                continue
+            out.append((kind, v))
+    out += [("SECRET", v) for v in env_secrets() if v in text]
+    return out
+
+
 def _luhn_ok(s: str) -> bool:
     digits = [int(c) for c in s if c.isdigit()]
     if not 13 <= len(digits) <= 19:
@@ -38,6 +88,13 @@ def _luhn_ok(s: str) -> bool:
     return total % 10 == 0
 
 
+def _public_ip(s: str) -> bool:
+    try:
+        return ipaddress.ip_address(s).is_global
+    except ValueError:
+        return False
+
+
 def find(text: str, medical: bool = False) -> list[tuple[str, str]]:
     """Return (type, value) pairs found in text."""
     found: list[tuple[str, str]] = []
@@ -45,6 +102,14 @@ def find(text: str, medical: bool = False) -> list[tuple[str, str]]:
 
     def free(a: int, b: int) -> bool:
         return all(b <= s or a >= e for s, e in taken)
+
+    # Credentials first (safeagents-style pass), longest first.
+    for kind, value in sorted(set(credential_values(text)), key=lambda h: -len(h[1])):
+        for m in re.finditer(re.escape(value), text):
+            if free(*m.span()):
+                taken.append(m.span())
+                if (kind, value) not in found:
+                    found.append((kind, value))
 
     for m in ASSIGNMENT.finditer(text):
         a, b = m.span(1)
@@ -58,6 +123,10 @@ def find(text: str, medical: bool = False) -> list[tuple[str, str]]:
             if not free(a, b):
                 continue
             if kind == "CREDIT_CARD" and not _luhn_ok(m.group()):
+                continue
+            if kind == "IP_ADDRESS" and not _public_ip(m.group()):
+                continue  # 192.168.x, 10.x, 127.0.0.1 don't identify anyone
+            if kind == "EMAIL" and PUBLIC_EMAIL.match(m.group()):
                 continue
             taken.append((a, b))
             found.append((kind, m.group()))

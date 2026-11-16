@@ -3,7 +3,10 @@ name = "scrubber"
 version = "0.1.0"
 description = "Scrub PII locally (regex + Ollama) before sending prompts to Claude, then restore it in the reply."
 requires-python = ">=3.11"
-dependencies = ["anthropic"]
+dependencies = [
+    "anthropic",
+    "atif-scan>=0.8.15",
+]
 
 [project.scripts]
 scrub = "scrubber.cli:main"

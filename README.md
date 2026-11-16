@@ -3,7 +3,8 @@
 Scrub private info from a prompt on your machine, send the clean prompt to Claude, then put the real values back in the reply.
 
 ```
-your prompt ─► regex (emails, phones, keys, cards, ETH addresses)
+your prompt ─► credential pass (safeagents-style: keys, tokens, auth headers, env secrets, home dirs, public IPs)
+            ─► regex (emails, phones, cards, ETH addresses)
             ─► local Ollama model (people, orgs, places, project names)
             ─► keep-list check (names you want Claude to see)
             ─► style normalize (local model rewrites in a neutral voice)
@@ -90,6 +91,10 @@ clean = scrub(text, policy, vault)
 ...send clean anywhere...
 original = restore(reply, vault)
 ```
+
+## Credential pass
+
+The first pass follows Hugging Face [safeagents](https://github.com/huggingface/safeagents)' `scrub` command and uses its detector library, [atif-scan](https://pypi.org/project/atif-scan/) (Apache 2.0): many API key formats, secret-named values, auth headers, `Bearer` tokens, URL passwords, secret query params, and the values of this machine's secret env vars. Home-dir usernames and public IPs are masked; private IPs, `/home/ubuntu`, `git@` and noreply addresses are kept.
 
 ## Bench
 

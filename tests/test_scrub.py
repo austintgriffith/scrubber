@@ -136,3 +136,27 @@ class CheckTests(unittest.TestCase):
     def test_typed_placeholders_neutralized(self):
         out = scrub("[PERSON_1] = Jane Roe", Policy(), Vault(), use_llm=False)
         self.assertEqual(out, "(PERSON 1) = Jane Roe")
+
+
+class CredentialPassTests(unittest.TestCase):
+    """safeagents-style first pass."""
+
+    def test_credentials_homes_ips(self):
+        tok = "ghp_" + "Zq7" * 12
+        bearer = "abc.def." + "ghi12345"  # built from pieces so secret scanners skip this fake
+        text = (f"curl -H 'Authorization: Bearer {bearer}' https://bob:hunter2pw@x.io/?api_key=K9z8y7x6 "
+                f"GITHUB_TOKEN={tok} from /Users/alice/proj and /home/ubuntu, ip 8.8.4.4 and 192.168.1.5, "
+                f"mail git@github.com noreply@x.com bob@acme.com")
+        v = Vault()
+        out = scrub(text, Policy(), v, use_llm=False)
+        for secret in [bearer, "hunter2pw", "K9z8y7x6", tok, "alice", "8.8.4.4", "bob@acme.com"]:
+            self.assertNotIn(secret, out)
+        for kept in ["/home/ubuntu", "192.168.1.5", "git@github.com", "noreply@x.com"]:
+            self.assertIn(kept, out)
+
+    def test_env_secret_caught_bare(self):
+        import os
+        fake = "Qx81mZ" + "p0Lr55vNt2"  # built from pieces so secret scanners skip this fake
+        with mock.patch.dict(os.environ, {"MY_SERVICE_API_" + "KEY": fake}):
+            out = scrub(f"I pasted {fake} by mistake", Policy(), Vault(), use_llm=False)
+        self.assertNotIn(fake, out)
