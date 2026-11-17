@@ -47,8 +47,8 @@ CRED_PATTERNS: list[tuple[str, re.Pattern]] = [
 ]
 # Home dirs of containers and CI machines, not a person.
 GENERIC_HOME_USERS = {"shared", "ubuntu", "runner", "user", "admin", "linuxbrew", "node", "app", "public", "root"}
-# Not personal: SSH remotes, noreply senders, example domains.
-PUBLIC_EMAIL = re.compile(r"(?i)^(?:git@|no-?reply[^@]*@|.*@(?:example\.(?:com|org|net)|users\.noreply\.github\.com)$)")
+# Not personal: SSH remotes, noreply senders. (Not example.com: "lena.hartwig@example.com" still names someone.)
+PUBLIC_EMAIL = re.compile(r"(?i)^(?:git@|no-?reply[^@]*@|.*@users\.noreply\.github\.com$)")
 
 
 def env_secrets() -> set[str]:

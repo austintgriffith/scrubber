@@ -178,3 +178,7 @@ class AttackFixTests(unittest.TestCase):
         out = self.med("Pt: DELACROIX, Hu / DOB 7-2-2008", [("PERSON", "DELACROIX")])
         self.assertNotIn("Hu", out)
         self.assertIn("[PERSON_1], [PERSON_1]", out)
+
+    def test_example_domain_email_scrubbed(self):
+        out = self.med("email me at lena.hartwig88@example.com")
+        self.assertNotIn("hartwig88", out)
