@@ -143,7 +143,12 @@ DAY_WORDS = "(?i:" + "|".join(sorted(
 
 MEDICAL: list[tuple[str, re.Pattern]] = [(k, re.compile(p)) for k, p in [
     ("URL", r"https?://\S+"),
-    ("DATE", r"\b\d{1,2}/\d{1,2}/\d{2,4}\b"),
+    # A time right after a date goes with it ("10/19/2026 07:42").
+    ("DATE", r"\b\d{1,2}/\d{1,2}/\d{2,4}(?:,?\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s?[AaPp][Mm])?)?\b"),
+    # Day first: "19 August", "3rd March 2021" (left "19" behind before).
+    ("DATE", r"\b\d{1,2}(?:st|nd|rd|th)?\s+(?i:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sept?|Oct|Nov|Dec)(?i:[a-z]*)\.?(?:,?\s+\d{4})?\b"),
+    # Bed / room numbers in a hospital ("bed 14", "Rm 4B").
+    ("ID_NUMBER", r"(?i)\b(?:bed|room|rm)\s*#?\s*\d{1,4}[A-Za-z]?\b"),
     ("DATE", r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.? \d{1,2}(?:st|nd|rd|th)?(?:,? \d{4})?\b"),
     ("DATE", r"\b(?:\d{1,2}(?:st|nd|rd|th)?|" + DAY_WORDS + r") of (?i:(?:last |next |this )?(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*)\b(?:,? \d{4})?"),
     # 12.04.1948, 3-4-22, OCR'd 12.o4.1948 (three parts, so 120/80 is safe)

@@ -50,6 +50,7 @@ def main():
     ap.add_argument("limit", nargs="?", type=int)
     ap.add_argument("--model", default=None)
     ap.add_argument("--mode", default="medical")
+    ap.add_argument("--only", help="comma list of categories, e.g. pasted-records,odd-dates")
     a = ap.parse_args()
 
     policy = Policy.load(ROOT / "policy.json")
@@ -57,7 +58,10 @@ def main():
     policy.check_tags = None
     if a.model:
         policy.scrubber = {"kind": "ollama", "model": a.model}
-    cases = load(a.set)[: a.limit]
+    cases = load(a.set)
+    if a.only:
+        cases = [c for c in cases if c[0].split(":")[-1] in a.only.split(",")]
+    cases = cases[: a.limit]
 
     def one(case):
         cid, kind, raw, must_go = case

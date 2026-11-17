@@ -160,3 +160,21 @@ class CredentialPassTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"MY_SERVICE_API_" + "KEY": fake}):
             out = scrub(f"I pasted {fake} by mistake", Policy(), Vault(), use_llm=False)
         self.assertNotIn(fake, out)
+
+
+class AttackFixTests(unittest.TestCase):
+    """Misses found by the redteam3 bench."""
+
+    def med(self, text, ents=()):
+        with fake_llm(list(ents)):
+            return scrub(text, Policy(mode="medical", passes=1), Vault())
+
+    def test_day_first_date_time_bed(self):
+        out = self.med("signed on 19 August. Collected: 10/19/2026 07:42. Pt is bed 14, Rm 4B")
+        for bad in ["19", "August", "07:42", "bed 14", "4B"]:
+            self.assertNotIn(bad, out)
+
+    def test_last_first_header(self):
+        out = self.med("Pt: DELACROIX, Hu / DOB 7-2-2008", [("PERSON", "DELACROIX")])
+        self.assertNotIn("Hu", out)
+        self.assertIn("[PERSON_1], [PERSON_1]", out)

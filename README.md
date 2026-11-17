@@ -108,3 +108,7 @@ uv run python bench/run.py redteam3 --model qwen3:8b  # attack chats written to 
 ## Tests
 
 `uv run python -m unittest discover -s tests`
+
+## License
+
+GPL-3.0-or-later. Some parts come from MIT and Apache-2.0 projects; see `THIRD_PARTY.md`.

@@ -175,10 +175,19 @@ def scrub(text: str, policy: Policy, vault: Vault, use_llm: bool = True) -> str:
     return text
 
 
+# Pasted records write names "LAST, First": the model often gets only LAST.
+_LAST_FIRST = re.compile(r"(\[PERSON_\d+\]),\s+([A-Z][A-Za-z'\-]{1,20})(?=\s*(?:/|\||\n|$|\(|;|,?\s+(?:DOB|MRN|Acct|Age|Sex|\d)))")
+
+
 def _llm_pass(text: str, policy: Policy, vault: Vault, hint: str = "", allow_other: bool = False) -> tuple[str, int]:
     found = local_llm.find(text, policy.backend(), policy.keep, hint=hint,
                            medical=policy.medical, allow_other=allow_other)
     text, changed = _apply(text, found, policy, vault)
+    for m in list(_LAST_FIRST.finditer(text)):
+        ph, first = m.group(1)[1:-1], m.group(2)
+        if not policy.is_kept(first):
+            vault.aliases.setdefault(first.lower(), ph)
+            text = text.replace(m.group(0), f"[{ph}], [{vault.aliases[first.lower()]}]", 1)
     # Re-match everything already stripped, so a repeat mention can't slip out. Cheap insurance.
     text, _ = _apply(text, vault.known(), policy, vault)
     return text, changed

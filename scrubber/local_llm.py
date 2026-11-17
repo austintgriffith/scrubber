@@ -148,7 +148,7 @@ def _post(url: str, body: dict, headers: dict, timeout: float) -> dict:
         return json.loads(r.read())
 
 
-def chat(b: Backend, system: str, user: str, schema: dict | None = None, timeout: float = 300) -> str:
+def chat(b: Backend, system: str, user: str, schema: dict | str | None = None, timeout: float = 900) -> str:
     """One system+user turn, return the text. With schema, the text is JSON."""
     b.check()
     if b.kind == "ollama":
@@ -202,7 +202,7 @@ def _chunks(text: str, size: int = 6000) -> list[str]:
 
 
 def find(text: str, backend: Backend, keep: list[str], hint: str = "", medical: bool = False,
-         allow_other: bool = False, timeout: float = 300) -> list[tuple[str, str]]:
+         allow_other: bool = False, timeout: float = 900) -> list[tuple[str, str]]:
     """Return (type, value) pairs. Values not literally in the text are dropped.
 
     hint: what the exit check says is still there, for a retry.
