@@ -28,6 +28,7 @@ class Policy:
     passes: int = 2  # extra local-model passes over already-scrubbed text
     keep_email_domain: bool = False  # bob@acme.com -> [EMAIL_1]@acme.com (domain shows; leaks the org)
     normalize: bool = True  # rewrite in a neutral voice so style can't identify the author
+    rewrite_prompt: str = "v2"  # v2: task-first, from vbuterin/zkapi (MIT); v1: lighter, keeps sentence shape
     mode: str = "general"  # "medical": also dates, ages 90+, ZIPs; pii-sanitizer's prompt and all Sage tags
     check: bool = True  # Sage exit check before anything leaves
     check_retries: int = 2  # local-model retries told what Sage flagged
@@ -240,7 +241,7 @@ def scrub_checked(text: str, policy: Policy, vault: Vault, use_llm: bool = True,
     clean = scrub(text, policy, vault, use_llm)
     if normalize:
         from .normalize import normalize as rewrite
-        clean = rewrite(clean, policy.backend())
+        clean = rewrite(clean, policy.backend(), prompt=policy.rewrite_prompt)
     if not policy.check:
         return Result(clean, "unchecked")
 

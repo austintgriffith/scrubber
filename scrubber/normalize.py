@@ -58,13 +58,13 @@ def _clean_prose(text: str) -> str:
     return text.strip()
 
 
-def normalize(text: str, backend: "local_llm.Backend", tries: int = 2) -> str:
+def normalize(text: str, backend: "local_llm.Backend", tries: int = 2, prompt: str | None = None) -> str:
     prose, code = _stash(text)
     want = sorted(TOKEN.findall(prose))
 
     out = None
     for _ in range(tries):
-        cand = local_llm.rewrite(prose, backend)
+        cand = local_llm.rewrite(prose, backend, prompt=prompt)
         if sorted(TOKEN.findall(cand)) == want:
             out = cand
             break

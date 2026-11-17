@@ -43,5 +43,6 @@
   "mode": "general",
   "check": true,
   "check_retries": 2,
-  "private": "computer"
+  "private": "computer",
+  "rewrite_prompt": "v2"
 }

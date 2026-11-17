@@ -69,6 +69,12 @@ So after scrubbing, the local model rewrites the prompt in plain neutral English
 
 Turn off per call with `--raw-style`, or set `"normalize": false` in the policy.
 
+Two prompts (`rewrite_prompt` in the policy):
+- `v2` (default): rebuilds each message as plain task steps. Adapted from Vitalik's zkapi rewriter (MIT). Hides style much better; sometimes "fixes" slang words.
+- `v1`: lighter; keeps your sentence shape.
+
+Compare them: `uv run python bench/rewrite_eval.py v1 v2` (set `SCRUB_EVAL_MODEL` to pick the model).
+
 ## Policy (`policy.json`)
 
 - `keep`: names never scrubbed (public projects, public people, your own brand). Parts of a kept phrase are kept too ("Vitalik" from "Vitalik Buterin").
